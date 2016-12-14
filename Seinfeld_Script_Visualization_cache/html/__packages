@@ -1,0 +1,15 @@
+base
+methods
+datasets
+utils
+grDevices
+graphics
+stats
+scales
+DBI
+RMySQL
+stringr
+tidyr
+dplyr
+igraph
+ggplot2

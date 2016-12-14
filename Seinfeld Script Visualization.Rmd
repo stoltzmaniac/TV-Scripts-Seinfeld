@@ -1,0 +1,138 @@
+---
+title: "Seinfeld Script Visualizations"
+author: "Scott Stoltzman"
+date: "December 14, 2016"
+output:
+  html_document: default
+---
+
+```{r results='hide', warning=FALSE, message=FALSE}
+library(scales)
+library(RMySQL)
+library(stringr)
+library(tidyr)
+library(dplyr)
+library(igraph)
+library(ggplot2)
+```
+
+```{r,cache=TRUE}
+db = dbConnect(MySQL(), 
+                 user='root', 
+                 password='root', 
+                 dbname='tvscripts', 
+                 host='localhost')
+rs = dbSendQuery(db, "select episodeTitle,rawLine from seinfeld_raw")
+data = fetch(rs, n=-1)
+
+#Example rawLine  "George: Yeah, Art *Vandelay*."  
+```
+
+
+```{r}
+data$characterName = str_extract(sub(" ","",sub(":.*","",data$rawLine)),"[A-Z][A-Z]+")
+
+data = data[is.na(data$characterName)==FALSE,]
+data = data %>% 
+  filter(characterName != 'TV') %>% 
+  filter(characterName != 'DVD') %>%
+  filter(characterName != 'MAN')
+```
+
+```{r}
+#Shift function to see who's next (presumably who they're talking to)
+shift <- function(x, n){
+  c(x[-(seq(n))], rep(NA, n))
+}
+
+#One to the next
+data$characterNext = shift(data$characterName, 1)
+data$characterInteraction = paste(data$characterName,data$characterNext,sep="-->")
+
+```
+
+```{r,fig.height=3.5}
+#WHO HAS THE MOST LINES
+df = data %>%
+  group_by(characterName) %>%
+  summarise(n=n()) %>%
+  arrange(desc(n)) %>%
+  top_n(20) %>%
+  mutate(freq = n / sum(n))
+
+p = ggplot(df,aes(reorder(characterName,n),y=freq))
+p + geom_bar(stat = 'identity') + coord_flip() + scale_y_continuous(labels=percent_format()) + geom_text(aes(label=paste(round(100*freq,0),"%",sep=''),hjust=0)) + labs(x='',y='Volume') + ggtitle('Total Lines')
+
+```
+
+```{r,fig.height=3.5}
+#CONVERSATION FROM ONE TO THE OTHER
+df = data %>%
+  group_by(characterInteraction) %>%
+  summarise(n=n()) %>%
+  arrange(desc(n)) %>%
+  top_n(20) %>%
+  mutate(freq = n / sum(n))
+
+p = ggplot(df,aes(reorder(characterInteraction,n),y=freq))
+p + geom_bar(stat = 'identity') + coord_flip()+ scale_y_continuous(labels=percent_format()) + geom_text(aes(label=paste(round(100*freq,0),"%",sep=''),hjust=0)) + labs(x='',y='Volume') + ggtitle('Lines Between Two Characters (Directional)')
+
+```
+
+```{r,fig.height=3.5}
+#Two away - are they just having a back and forth?
+data$characterNext2 = shift(data$characterName, 2)
+data$characterInteraction2 = paste(data$characterName,data$characterNext2,sep="-->")
+
+df = data %>%
+  group_by(characterInteraction2) %>%
+  summarise(n=n()) %>%
+  arrange(desc(n)) %>%
+  top_n(20) %>%
+  mutate(freq = n / sum(n))
+
+p = ggplot(df,aes(reorder(characterInteraction2,n),y=freq))
+p + geom_bar(stat = 'identity') + coord_flip()+ scale_y_continuous(labels=percent_format()) + geom_text(aes(label=paste(round(100*freq,0),"%",sep=''),hjust=0)) + labs(x='',y='Volume') + ggtitle('Lines Skipping One Character')
+```
+
+
+```{r,fig.height=3.5}
+#Three interactions in a row
+data$threeInteraction = paste(data$characterName,data$characterNext,data$characterNext2,sep="-->")
+df = data %>%
+  group_by(threeInteraction) %>%
+  summarise(n=n()) %>%
+  arrange(desc(n)) %>%
+  top_n(20) %>%
+  mutate(freq = n / sum(n))
+
+p = ggplot(df,aes(reorder(threeInteraction,n),y=freq))
+p + geom_bar(stat = 'identity') + coord_flip() + scale_y_continuous(labels=percent_format()) + geom_text(aes(label=paste(round(100*freq,0),"%",sep=''),hjust=0)) + labs(x='',y='Volume') + ggtitle('Lines Between 3 Chars (Directional)')
+```
+
+
+```{r,fig.height=9}
+df = data %>%
+  group_by(characterName) %>%
+  summarise(n=n()) %>%
+  arrange(desc(n)) %>%
+  top_n(11)
+topCharacters = df$characterName
+df.data = data %>% filter(characterName %in% topCharacters) %>% filter(characterNext %in% topCharacters)
+
+df = data.frame(A = df.data$characterName, B = df.data$characterNext)
+df = na.omit(df)
+g4 = graph.data.frame(d=df,directed=FALSE)
+g4 = simplify(g4,remove.multiple=F,remove.loops=F,edge.attr.comb=c(weight='sum',type='ignore'))
+
+
+plot(g4,     
+     vertex.label.color='black',
+     vertex.frame.color=NA,
+     vertex.label.font=2,
+     vertex.label.dist = 0.5)
+title("Relationship of Top Seinfeld Characters")
+```
+
+
+
