@@ -1,0 +1,229 @@
+---
+title: "Seinfeld Script Visualizations"
+author: "Scott Stoltzman"
+date: "December 14, 2016"
+output:
+  html_document: default
+---
+This post is dedicated to my mother - Seinfeld's greatest fan.
+
+Seinfeld is a classic TV sitcom. It featured four main characters surrounded by relatively normal, everyday, run of the mill scenarios. In the spirit of Seinfeld, this post will also "be about nothing."
+
+Load Required Libraries
+```language-r
+library(scales)
+library(RMySQL)
+library(stringr)
+library(tidyr)
+library(dplyr)
+library(igraph)
+library(ggplot2)
+```
+
+I used python to create a web scraper which gathered scripts from various sites on the internet and input them into a local MySQL database.
+
+######Data From Local MySQL
+
+```language-r
+db = dbConnect(MySQL(), 
+                 user='root', 
+                 password='root', 
+                 dbname='tvscripts', 
+                 host='localhost')
+rs = dbSendQuery(db, "select episodeTitle,rawLine from seinfeld_raw")
+data = fetch(rs, n=-1)
+
+print(data$rawLine[600:616])
+```
+
+Scraping the raw lines without parsing looked simple enough. Parsing before inserting into MySQL created some difficulties so it made sense to parse once loaded into R.   
+A sample of the raw data:  
+```
+ [1] "Jerry: I don't know. He's an importer."                            
+ [2] "Vanessa: Importer?"                                                
+ [3] "George: ...And exporter."                                          
+ [4] "Jerry: He's an importer/exporter."                                 
+ [5] "George: I'm, uh, I'm an architect."                                
+ [6] "Vanessa: Really. What do you design?"                              
+ [7] "George: Uh, railroads, uh..."                                      
+ [8] "Vanessa: I thought engineers do that."                             
+ [9] "George: They can..."                                               
+[10] "Jerry: Y'know I'm sorry you had to leave so early the other night."
+[11] "Vanessa: Oh, me too. My cousin had to go back to Boston."          
+[12] "Jerry: Oh, that guy was your *cousin*!"                            
+[13] "Vanessa: Yeah, and that woman was your--"                          
+[14] "Jerry: Friend!"                                                    
+[15] "George: I'll just, uh, get a paper..."                             
+[16] "Jerry: So, um, do you date immature men?"                          
+[17] "Vanessa: Almost exclusively..."                                       
+```
+
+I modified the raw data in order to strip out the character name and line spoken. I also removed lines to clean up the data a bit.
+```language-r
+data$characterName = str_extract(sub(" ","",
+                                     sub(":.*","",data$rawLine)),
+                                 "[A-Z][A-Z]+")
+data = data[is.na(data$characterName)==FALSE,]
+data = data %>% 
+  filter(characterName != 'TV') %>% 
+  filter(characterName != 'DVD') %>%
+  filter(characterName != 'MAN')
+```
+
+I used a shift function to create a new column which is the same as the character column but moved up by one row. This should help to show the conversation between two people. Inherently, this will be flawed because the beginning and ends of scenes will run together. I made the assumption that it wouldn't impact the results since the instances would likely be evenly distributed across characters.
+```language-r
+shift <- function(x, n){
+  c(x[-(seq(n))], rep(NA, n))
+}
+
+#One character to the next in new column
+data$characterNext = shift(data$characterName, 1)
+data$characterInteraction = paste(data$characterName
+                                  ,data$characterNext,sep="-->")
+
+```
+
+I created a list of characters with the most lines recorded.  
+
+**Observations**  
+
+* Jerry is obviously the main character - the show is named after him after all
+* The main characters: Jerry, George, Elaine, and Kramer make up roughly 90% of the top 20 character's lines
+* George and Jerry's parents are actually a major part of the show (they showed up in the top 10)
+
+
+```language-r
+df = data %>%
+  group_by(characterName) %>%
+  summarise(n=n()) %>%
+  arrange(desc(n)) %>%
+  top_n(20) %>%
+  mutate(freq = n / sum(n))
+
+p = ggplot(df,aes(reorder(characterName,n),y=freq))
+p + geom_bar(stat = 'identity') +
+  coord_flip() + 
+  scale_y_continuous(labels=percent_format()) +
+  geom_text(aes(label=paste(round(100*freq,0),"%",sep=''),hjust=0)) +
+  labs(x='',y='Volume') + 
+  ggtitle('Total Lines')
+
+```
+![barplot](https://github.com/stoltzmaniac/TV-Scripts-Seinfeld/blob/master/Seinfeld_Script_Visualization_files/figure-html/unnamed-chunk-5-1.png?raw=true)
+I created a list of two characters speaking to each other. This is directional data (so Jerry speaking to George is separate from George speaking to Jerry).  
+
+**Observations**  
+
+* Jerry is involved in the top 6 two person interactions
+* It seems as if the others don't speak to each other nearly as often as they do to Jerry
+* Due to the nature of how this data was created, it would only make sense that character links are so closely related
+```language-r
+df = data %>%
+  group_by(characterInteraction) %>%
+  summarise(n=n()) %>%
+  arrange(desc(n)) %>%
+  top_n(20) %>%
+  mutate(freq = n / sum(n))
+
+p = ggplot(df,aes(reorder(characterInteraction,n),y=freq))
+p + geom_bar(stat = 'identity') + 
+  coord_flip()+ scale_y_continuous(labels=percent_format()) +
+  geom_text(aes(label=paste(round(100*freq,0),"%",sep=''),hjust=0)) +
+  labs(x='',y='Volume') + 
+  ggtitle('Lines Between Two Characters (Directional)')
+```
+![barplot](https://github.com/stoltzmaniac/TV-Scripts-Seinfeld/blob/master/Seinfeld_Script_Visualization_files/figure-html/unnamed-chunk-6-1.png?raw=true)
+
+I used a shift function once again to see how the conversation flows two lines after. This will give a hint as to whether the conversation is between two characters or more. Again, this is directional data.  
+
+
+```language-r
+data$characterNext2 = shift(data$characterName, 2)
+data$characterInteraction2 = paste(data$characterName,
+                                   data$characterNext2,sep="-->")
+
+df = data %>%
+  group_by(characterInteraction2) %>%
+  summarise(n=n()) %>%
+  arrange(desc(n)) %>%
+  top_n(20) %>%
+  mutate(freq = n / sum(n))
+
+p = ggplot(df,aes(reorder(characterInteraction2,n),y=freq))
+p + geom_bar(stat = 'identity') +
+  coord_flip()+ scale_y_continuous(labels=percent_format()) + 
+  geom_text(aes(label=paste(round(100*freq,0),"%",sep=''),hjust=0)) +
+  labs(x='',y='Volume') + 
+  ggtitle('Lines Skipping One Character')
+```
+![barplot](https://github.com/stoltzmaniac/TV-Scripts-Seinfeld/blob/master/Seinfeld_Script_Visualization_files/figure-html/unnamed-chunk-7-1.png?raw=true)
+I combined three lines in a row created a nice view of groups which speak in order. 
+
+**Observations**  
+
+* Kramer did not show up in the top 20 lines between 3 unique characters
+* Kramer likely interacts more often in one-on-one than the other main characters
+```language-r
+#Three interactions in a row
+data$threeInteraction = paste(data$characterName,
+                              data$characterNext,
+                              data$characterNext2,sep="-->")
+df = data %>%
+  group_by(threeInteraction) %>%
+  summarise(n=n()) %>%
+  arrange(desc(n)) %>%
+  top_n(20) %>%
+  mutate(freq = n / sum(n))
+
+p = ggplot(df,aes(reorder(threeInteraction,n),y=freq))
+p + geom_bar(stat = 'identity') + 
+  coord_flip() + 
+  scale_y_continuous(labels=percent_format()) +
+  geom_text(aes(label=paste(round(100*freq,0),"%",sep=''),hjust=0)) +
+  labs(x='',y='Volume') + 
+  ggtitle('Lines Between 3 Chars (Directional)')
+```
+![barplot](https://github.com/stoltzmaniac/TV-Scripts-Seinfeld/blob/master/Seinfeld_Script_Visualization_files/figure-html/unnamed-chunk-8-1.png?raw=true)
+The igraph library allows for the visualization of how two vectors are related to each other. Nodes represent the characters, the edges resemble lines (relationships) between the two.
+
+**Observations**  
+
+* The main characters, Jerry, George, Elaine, and Kramer, are the center of attention and have the most relationships
+* Parents have strong relationships with their kids and each other
+* Newman seems to play a large role but primarily interacts only with the main characters
+* Peterman interacts almost solely with Elaine - which makes sense because he's her boss
+* Susan primarily interacts with George - which makes sense because she engaged to him. She also interacts with Jerry but to a lesser extent
+
+```language-r
+df = data %>%
+  group_by(characterName) %>%
+  summarise(n=n()) %>%
+  arrange(desc(n)) %>%
+  top_n(11)
+topCharacters = df$characterName
+df.data = data %>% 
+  filter(characterName %in% topCharacters) %>% 
+  filter(characterNext %in% topCharacters)
+
+df = data.frame(A = df.data$characterName, B = df.data$characterNext)
+df = na.omit(df)
+g4 = graph.data.frame(d=df,directed=FALSE)
+g4 = simplify(g4,
+              remove.multiple=F,
+              remove.loops=F,
+              edge.attr.comb=c(weight='sum',type='ignore'))
+plot(g4,     
+     vertex.label.color='black',
+     vertex.frame.color=NA,
+     vertex.label.font=2,
+     vertex.label.dist = 0.5)
+```
+####Relationship of Top Seinfeld Characters
+![barplot](https://github.com/stoltzmaniac/TV-Scripts-Seinfeld/blob/master/Seinfeld_Script_Visualization_files/figure-html/unnamed-chunk-9-1-small.PNG?raw=true)
+
+**Conclusion**  
+Ultimately, the "show about nothing" didn't contain many surprises. Further analysis of the seasons could perhaps show some additional insights. Sentiment analysis would be useful in determining the "tone" of episodes and characters. Decision trees based off of lines or bi-grams, could perhaps predict which character is speaking. Maybe there will be more to come...
+
+Code used in this post is on my [GitHub](https://github.com/stoltzmaniac/TV-Scripts-Seinfeld.git)
+
+
