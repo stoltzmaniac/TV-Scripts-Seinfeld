@@ -1,9 +1,0 @@
-base
-scales
-DBI
-RMySQL
-stringr
-tidyr
-dplyr
-igraph
-ggplot2
