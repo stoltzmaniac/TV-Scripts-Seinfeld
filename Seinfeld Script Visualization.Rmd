@@ -25,12 +25,14 @@ db = dbConnect(MySQL(),
 rs = dbSendQuery(db, "select episodeTitle,rawLine from seinfeld_raw")
 data = fetch(rs, n=-1)
 
-#Example rawLine  "George: Yeah, Art *Vandelay*."  
+print(data$rawLine[600:616])
 ```
 
 
 ```{r}
-data$characterName = str_extract(sub(" ","",sub(":.*","",data$rawLine)),"[A-Z][A-Z]+")
+data$characterName = str_extract(sub(" ","",
+                                     sub(":.*","",data$rawLine)),
+                                 "[A-Z][A-Z]+")
 
 data = data[is.na(data$characterName)==FALSE,]
 data = data %>% 
@@ -47,7 +49,8 @@ shift <- function(x, n){
 
 #One to the next
 data$characterNext = shift(data$characterName, 1)
-data$characterInteraction = paste(data$characterName,data$characterNext,sep="-->")
+data$characterInteraction = paste(data$characterName
+                                  ,data$characterNext,sep="-->")
 
 ```
 
@@ -61,7 +64,12 @@ df = data %>%
   mutate(freq = n / sum(n))
 
 p = ggplot(df,aes(reorder(characterName,n),y=freq))
-p + geom_bar(stat = 'identity') + coord_flip() + scale_y_continuous(labels=percent_format()) + geom_text(aes(label=paste(round(100*freq,0),"%",sep=''),hjust=0)) + labs(x='',y='Volume') + ggtitle('Total Lines')
+p + geom_bar(stat = 'identity') +
+  coord_flip() + 
+  scale_y_continuous(labels=percent_format()) +
+  geom_text(aes(label=paste(round(100*freq,0),"%",sep=''),hjust=0)) +
+  labs(x='',y='Volume') + 
+  ggtitle('Total Lines')
 
 ```
 
@@ -75,14 +83,19 @@ df = data %>%
   mutate(freq = n / sum(n))
 
 p = ggplot(df,aes(reorder(characterInteraction,n),y=freq))
-p + geom_bar(stat = 'identity') + coord_flip()+ scale_y_continuous(labels=percent_format()) + geom_text(aes(label=paste(round(100*freq,0),"%",sep=''),hjust=0)) + labs(x='',y='Volume') + ggtitle('Lines Between Two Characters (Directional)')
+p + geom_bar(stat = 'identity') + 
+  coord_flip()+ scale_y_continuous(labels=percent_format()) +
+  geom_text(aes(label=paste(round(100*freq,0),"%",sep=''),hjust=0)) +
+  labs(x='',y='Volume') + 
+  ggtitle('Lines Between Two Characters (Directional)')
 
 ```
 
 ```{r,fig.height=3.5}
 #Two away - are they just having a back and forth?
 data$characterNext2 = shift(data$characterName, 2)
-data$characterInteraction2 = paste(data$characterName,data$characterNext2,sep="-->")
+data$characterInteraction2 = paste(data$characterName,
+                                   data$characterNext2,sep="-->")
 
 df = data %>%
   group_by(characterInteraction2) %>%
@@ -92,13 +105,19 @@ df = data %>%
   mutate(freq = n / sum(n))
 
 p = ggplot(df,aes(reorder(characterInteraction2,n),y=freq))
-p + geom_bar(stat = 'identity') + coord_flip()+ scale_y_continuous(labels=percent_format()) + geom_text(aes(label=paste(round(100*freq,0),"%",sep=''),hjust=0)) + labs(x='',y='Volume') + ggtitle('Lines Skipping One Character')
+p + geom_bar(stat = 'identity') +
+  coord_flip()+ scale_y_continuous(labels=percent_format()) + 
+  geom_text(aes(label=paste(round(100*freq,0),"%",sep=''),hjust=0)) +
+  labs(x='',y='Volume') + 
+  ggtitle('Lines Skipping One Character')
 ```
 
 
 ```{r,fig.height=3.5}
 #Three interactions in a row
-data$threeInteraction = paste(data$characterName,data$characterNext,data$characterNext2,sep="-->")
+data$threeInteraction = paste(data$characterName,
+                              data$characterNext,
+                              data$characterNext2,sep="-->")
 df = data %>%
   group_by(threeInteraction) %>%
   summarise(n=n()) %>%
@@ -107,7 +126,12 @@ df = data %>%
   mutate(freq = n / sum(n))
 
 p = ggplot(df,aes(reorder(threeInteraction,n),y=freq))
-p + geom_bar(stat = 'identity') + coord_flip() + scale_y_continuous(labels=percent_format()) + geom_text(aes(label=paste(round(100*freq,0),"%",sep=''),hjust=0)) + labs(x='',y='Volume') + ggtitle('Lines Between 3 Chars (Directional)')
+p + geom_bar(stat = 'identity') + 
+  coord_flip() + 
+  scale_y_continuous(labels=percent_format()) +
+  geom_text(aes(label=paste(round(100*freq,0),"%",sep=''),hjust=0)) +
+  labs(x='',y='Volume') + 
+  ggtitle('Lines Between 3 Chars (Directional)')
 ```
 
 
@@ -118,14 +142,17 @@ df = data %>%
   arrange(desc(n)) %>%
   top_n(11)
 topCharacters = df$characterName
-df.data = data %>% filter(characterName %in% topCharacters) %>% filter(characterNext %in% topCharacters)
+df.data = data %>% 
+  filter(characterName %in% topCharacters) %>% 
+  filter(characterNext %in% topCharacters)
 
 df = data.frame(A = df.data$characterName, B = df.data$characterNext)
 df = na.omit(df)
 g4 = graph.data.frame(d=df,directed=FALSE)
-g4 = simplify(g4,remove.multiple=F,remove.loops=F,edge.attr.comb=c(weight='sum',type='ignore'))
-
-
+g4 = simplify(g4,
+              remove.multiple=F,
+              remove.loops=F,
+              edge.attr.comb=c(weight='sum',type='ignore'))
 plot(g4,     
      vertex.label.color='black',
      vertex.frame.color=NA,
