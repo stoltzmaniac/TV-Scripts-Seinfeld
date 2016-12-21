@@ -65,9 +65,7 @@ data$characterName = str_extract(sub(" ","",
                                  "[A-Z][A-Z]+")
 data = data[is.na(data$characterName)==FALSE,]
 data = data %>% 
-  filter(characterName != 'TV') %>% 
-  filter(characterName != 'DVD') %>%
-  filter(characterName != 'MAN')
+  filter(!grepl('TV|DVD|MAN', characterName)
 ```
 
 I used a shift function to create a new column which is the same as the character column but moved up by one row. This should help to show the conversation between two people. Inherently, this will be flawed because the beginning and ends of scenes will run together. I made the assumption that it wouldn't impact the results since the instances would likely be evenly distributed across characters.
