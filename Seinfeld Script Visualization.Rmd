@@ -36,9 +36,7 @@ data$characterName = str_extract(sub(" ","",
 
 data = data[is.na(data$characterName)==FALSE,]
 data = data %>% 
-  filter(characterName != 'TV') %>% 
-  filter(characterName != 'DVD') %>%
-  filter(characterName != 'MAN')
+  filter(!grepl('TV|DVD|MAN', characterName)
 ```
 
 ```{r}
